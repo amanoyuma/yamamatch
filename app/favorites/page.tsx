@@ -4,22 +4,13 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/AuthContext"
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { FavoriteButton } from "@/components/favorite-button"
 import { getMountainById } from "@/lib/diagnosis"
 import type { Mountain } from "@/lib/types"
-import { Heart, Home, MapPin, TrendingUp, ChevronRight } from "lucide-react"
-
-function getFavorites(): string[] {
-  if (typeof window === "undefined") return []
-  try {
-    const stored = localStorage.getItem("favorites")
-    return stored ? JSON.parse(stored) : []
-  } catch {
-    return []
-  }
-}
+import { Heart, Home, MapPin, ChevronRight } from "lucide-react"
 
 function getLevelLabel(level: string) {
   switch (level) {
@@ -36,46 +27,61 @@ function getLevelLabel(level: string) {
 
 export default function FavoritesPage() {
   const router = useRouter()
-const { user, loading: authLoading } = useAuth()
+  const { user, loading: authLoading } = useAuth()
+
   const [favorites, setFavorites] = useState<Mountain[]>([])
   const [mounted, setMounted] = useState(false)
 
-  const loadFavorites = () => {
-    const favoriteIds = getFavorites()
-    const favoriteMountains = favoriteIds
-      .map((id) => getMountainById(id))
+  // ⭐ DBからお気に入り取得
+  const loadFavorites = async () => {
+    if (!user) return
+
+    const { data, error } = await supabase
+      .from("favorites")
+      .select("mountain_id")
+      .eq("user_id", user.id)
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    const favoriteMountains = data
+      .map((f) => getMountainById(f.mountain_id))
       .filter((m): m is Mountain => m !== undefined)
+
     setFavorites(favoriteMountains)
   }
 
   useEffect(() => {
-  if (authLoading) return
+    if (authLoading) return
 
-  if (!user) {
-    router.push("/auth")
-    return
-  }
+    if (!user) {
+      router.push("/auth")
+      return
+    }
 
-  setMounted(true)
-  loadFavorites()
+    setMounted(true)
+    loadFavorites()
 
-  const handleFavoritesUpdate = () => loadFavorites()
-  window.addEventListener("favoritesUpdated", handleFavoritesUpdate)
+    // ⭐ お気に入り更新イベント（そのまま活かす）
+    const handleFavoritesUpdate = () => loadFavorites()
+    window.addEventListener("favoritesUpdated", handleFavoritesUpdate)
 
-  return () => {
-    window.removeEventListener("favoritesUpdated", handleFavoritesUpdate)
-  }
-}, [user, authLoading, router])
+    return () => {
+      window.removeEventListener("favoritesUpdated", handleFavoritesUpdate)
+    }
+  }, [user, authLoading, router])
 
   if (authLoading || !mounted) {
-  return (
-    <div className="container mx-auto max-w-4xl px-4 py-12">
-      <div className="flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-12">
+        <div className="flex items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
       </div>
-    </div>
-  )
-}
+    )
+  }
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8 md:py-12">
@@ -119,12 +125,15 @@ const { user, loading: authLoading } = useAuth()
                         {getLevelLabel(mountain.level)}
                       </span>
                     </div>
-                    <h3 className="font-semibold text-foreground">{mountain.name}</h3>
+                    <h3 className="font-semibold text-foreground">
+                      {mountain.name}
+                    </h3>
                     <p className="flex items-center gap-1 text-sm text-muted-foreground">
                       <MapPin className="h-3.5 w-3.5" />
                       {mountain.area}
                     </p>
                   </div>
+
                   <div className="flex shrink-0 items-center gap-2">
                     <FavoriteButton
                       mountainId={mountain.id}
@@ -132,6 +141,7 @@ const { user, loading: authLoading } = useAuth()
                       showLabel={false}
                       className="h-9 w-9 p-0"
                     />
+
                     <Button variant="ghost" size="sm" asChild>
                       <Link href={`/mountains/${mountain.id}`}>
                         <span className="sr-only">詳細を見る</span>

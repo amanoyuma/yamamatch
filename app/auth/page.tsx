@@ -23,25 +23,48 @@ export default function AuthPage() {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data: loginData, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         })
 
         if (error) throw error
 
+        const user = loginData.user
+
+        if (user) {
+          const { data: existingProfile, error: selectError } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle()
+
+          if (selectError) throw selectError
+
+          if (!existingProfile) {
+            const { error: profileError } = await supabase
+              .from("profiles")
+              .insert({
+                user_id: user.id,
+                name: "",
+              })
+
+            if (profileError) throw profileError
+          }
+        }
+
         setMessage("ログインしました")
         router.push("/")
       } else {
         const { error } = await supabase.auth.signUp({
-  email,
-  password,
-})
+          email,
+          password,
+        })
 
-if (error) throw error
+        if (error) throw error
 
-setMessage("新規登録が完了しました。ログインしてください。")
-setIsLogin(true)
+        setMessage("新規登録が完了しました。ログインしてください。")
+        setIsLogin(true)
       }
     } catch (error: any) {
       setMessage(error.message || "エラーが発生しました")
